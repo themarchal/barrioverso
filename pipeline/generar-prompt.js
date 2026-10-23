@@ -104,7 +104,11 @@ async function tirada(dir, universo, semilla){
   $('cultUniverso').value = universo;
   $('cultUniverso').dispatchEvent(new w.Event('change', {bubbles: true}));
   if (!$('cultRandomBtn')) return fuera('No aparece el dado de escena Cult');
+  /* «Universo al azar» tiene que estar desmarcada: el universo lo decide la rotación diaria. */
+  const azarUniverso = $('cultUniversoAzarCheck');
+  if (azarUniverso && azarUniverso.checked){ azarUniverso.checked = false; azarUniverso.dispatchEvent(new w.Event('change', {bubbles: true})); }
   $('cultRandomBtn').click();
+  if ($('cultUniverso').value !== universo) return fuera('El dado ha cambiado el universo del día (' + universo + ' → ' + $('cultUniverso').value + ')');
   const prompt = $('output').value;
   if (errores.length) return fuera('Errores JS en la herramienta');
   if (ROTO(prompt)) return fuera('El prompt sale roto o vacío');
