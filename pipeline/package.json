@@ -1,0 +1,7 @@
+{
+  "name": "barrioverso-publicador",
+  "private": true,
+  "description": "Genera el prompt diario de Barrio Verso con la herramienta oficial (modo Cult) cargada desde la rama main de themarchal/barrioverso-cine-gen.",
+  "scripts": { "prompt": "node generar-prompt.js" },
+  "dependencies": { "jsdom": "^27.0.0" }
+}
