@@ -25,6 +25,7 @@ const MODOS_TEXTO = [
   {id: 'verdad_alma', nombre: 'Verdad que el alma necesita oír'},
 ];
 const MAX_TIRADAS = 25;
+const DIAS_CADENA = 4;   // días hacia atrás que se recalculan para saber el look de ayer
 
 /* Señales de que la herramienta está rota: con cualquiera de ellas no se publica. */
 const ROTO = o => !o || /undefined|\[object|NaN|null\b/.test(o) || /, ,|,,|  ,/.test(o) || /\n\n\n/.test(o);
@@ -89,7 +90,7 @@ async function cargar(dir, semilla){
 }
 
 function valor(w, id){ const e = w.document.getElementById(id); if (!e) return ''; if (e.type === 'checkbox') return e.checked; return e.value; }
-function etiqueta(w, id){ const e = w.document.getElementById(id); return e && e.selectedOptions && e.selectedOptions[0] ? e.selectedOptions[0].textContent.trim() : ''; }
+function etiqueta(w, id){ const e = w.document.getElementById(id); return e && e.selectedOptions && e.selectedOptions[0] ? e.selectedOptions[0].textContent.trim().replace(/^R · /, '') : ''; }
 
 async function tirada(dir, universo, semilla){
   const {w, errores} = await cargar(dir, semilla);
@@ -122,7 +123,9 @@ async function tirada(dir, universo, semilla){
     tipoEscena: etiqueta(w, 'cultTipo'), marcador: etiqueta(w, 'cultMarcador'), arquetipo: etiqueta(w, 'cultArquetipo'),
     escenario: etiqueta(w, 'cultEscenario'),
   };
-  const resultado = {roto: false, prompt, ficha, avisos: avisos.length,
+  /* Identificadores, no etiquetas: la etiqueta cambia con el prefijo «R · » de la opción recomendada. */
+  const look = valor(w, 'cam') + ' | ' + valor(w, 'stock');
+  const resultado = {roto: false, prompt, ficha, look, avisos: avisos.length,
     nitidez: pideNitidez(prompt), otroFormato: (prompt.match(OTRO_FORMATO) || [''])[0], nombreUniverso: etiqueta(w, 'cultUniverso')};
   w.close();
   return resultado;
@@ -142,22 +145,41 @@ async function tirada(dir, universo, semilla){
     if (!base.w.CULT) throw new Error('La herramienta no carga el modo Cult (assets/cult-mode.js)');
     const universos = Object.keys(base.w.CULT.datos.UNIVERSOS);
     base.w.close();
-    const universo = universos[((dia % universos.length) + universos.length) % universos.length];
+    const universoDe = d => universos[((d % universos.length) + universos.length) % universos.length];
+    const universo = universoDe(dia);
     const modo = MODOS_TEXTO[((dia % 5) + 5) % 5];
     Object.assign(salida, {universo, modoTexto: modo});
 
-    let elegida = null, descartes = 0;
-    for (let i = 0; i < MAX_TIRADAS; i++){
-      const semilla = o.semilla != null ? o.semilla + i : dia * 1000 + i;
-      const t = await tirada(dir, universo, semilla);
-      if (t.roto){ salida.error = t.motivo; salida.errores = (t.errores || []).slice(0, 5); break; }
-      if (t.avisos || t.nitidez || t.otroFormato){ descartes++; continue; }
-      elegida = Object.assign(t, {semilla});
-      break;
+    /* Elige la tirada de un día. `evitar` es el look (cámara + stock) del día anterior: si coincide,
+       se vuelve a tirar, para que el feed no repita look dos días seguidos. */
+    async function elegirDia(d, evitar, semillaBase){
+      let descartes = 0, repetidas = 0;
+      for (let i = 0; i < MAX_TIRADAS; i++){
+        const semilla = semillaBase != null ? semillaBase + i : d * 1000 + i;
+        const t = await tirada(dir, universoDe(d), semilla);
+        if (t.roto) return {error: t.motivo, errores: (t.errores || []).slice(0, 5)};
+        if (t.avisos || t.nitidez || t.otroFormato){ descartes++; continue; }
+        if (evitar && lookDe(t) === evitar){ repetidas++; continue; }
+        return Object.assign(t, {semilla, descartes, repetidas});
+      }
+      return {error: `Ninguna de ${MAX_TIRADAS} tiradas sirvió (avisos de coherencia, nitidez, otro formato o look repetido)`};
     }
-    if (!salida.error && !elegida) salida.error = `Ninguna de ${MAX_TIRADAS} tiradas sirvió (avisos de coherencia, nitidez u otro formato)`;
-    if (salida.error) throw new Error(salida.error);
-    Object.assign(salida, {nombreUniverso: elegida.nombreUniverso, semilla: elegida.semilla, tiradasDescartadas: descartes,
+    const lookDe = t => t.look;
+
+    /* Sin estado guardado: el look de ayer se recalcula. Se reconstruye la cadena desde unos días
+       atrás aplicando la misma regla, así que coincide con lo que publicó el día anterior mientras
+       la herramienta no haya cambiado entre medias. */
+    let evitar = null;
+    if (o.semilla == null){
+      for (let d = dia - DIAS_CADENA; d < dia; d++){
+        const r = await elegirDia(d, evitar);
+        evitar = r.error ? null : lookDe(r);
+      }
+    }
+    const elegida = await elegirDia(dia, evitar, o.semilla);
+    if (elegida.error){ salida.error = elegida.error; if (elegida.errores) salida.errores = elegida.errores; throw new Error(salida.error); }
+    Object.assign(salida, {nombreUniverso: elegida.nombreUniverso, semilla: elegida.semilla,
+      tiradasDescartadas: elegida.descartes, tiradasPorLookRepetido: elegida.repetidas, lookAyer: evitar,
       ficha: elegida.ficha, prompt: elegida.prompt,
       magnific: {modelo: 'GPT 2', resolution: '1k', quality: 'low', aspectRatio: '4:3'}});
     process.stdout.write(JSON.stringify(salida, null, 2) + '\n');

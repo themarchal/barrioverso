@@ -17,7 +17,8 @@ Magnific GPT 2 y publicada a través de Zapier.
 4. Antes de gastar créditos se comprueba el prompt. Si la herramienta llega rota (sin modo Cult, con
    errores JS, prompt vacío o sin ancla del universo), ese día no se publica. Las tiradas válidas que
    no sirven para este formato (avisos de coherencia, petición de nitidez, otro formato que no sea
-   4:3) se vuelven a tirar.
+   4:3) se vuelven a tirar. También se vuelve a tirar si la cámara y el stock coinciden con los del
+   día anterior, para que el feed no repita look dos días seguidos.
 5. La tarea genera la imagen en Magnific (GPT 2, 1k, low, 4:3), escribe el texto y publica.
 
 Las instrucciones completas de la tarea están en [`pipeline/TAREA.md`](pipeline/TAREA.md).
